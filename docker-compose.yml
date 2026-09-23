@@ -1,0 +1,64 @@
+services:
+  moodle-db:
+    image: mariadb:11.4
+    container_name: moodle-db
+    restart: always
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --innodb_file_per_table=1
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-moodle}
+      - MYSQL_USER=${MYSQL_USER:-moodle_user}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    networks:
+      - moodle-net
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  moodle:
+    image: elestio/moodle:latest
+    container_name: moodle
+    restart: always
+    ports:
+      # Apache inside this image listens on port 80, not 8080 (not Bitnami-style).
+      - "${MOODLE_HOST_PORT:-2229}:80"
+    environment:
+      - MOODLE_DATABASE_TYPE=mariadb
+      - MOODLE_DATABASE_HOST=moodle-db
+      - MOODLE_DATABASE_PORT_NUMBER=3306
+      - MOODLE_DATABASE_USER=${MYSQL_USER:-moodle_user}
+      - MOODLE_DATABASE_PASSWORD=${MYSQL_PASSWORD}
+      - MOODLE_DATABASE_NAME=${MYSQL_DATABASE:-moodle}
+      - MOODLE_USERNAME=${MOODLE_ADMIN_USER:-admin}
+      - MOODLE_PASSWORD=${MOODLE_ADMIN_PASSWORD}
+      - MOODLE_SITE_NAME=${MOODLE_SITE_NAME:-My Moodle Site}
+      # Required: full public URL, e.g. https://moodle.example.com or https://example.com:40599
+      - MOODLE_HOST=${MOODLE_HOST}
+      - MOODLE_SSLPROXY=yes
+      - ALLOW_EMPTY_PASSWORD=no
+    volumes:
+      # Real paths for elestio/moodle:latest — NOT /bitnami/... (see README).
+      - moodle_www:/var/www/html
+      - moodle_data:/var/moodledata
+    depends_on:
+      moodle-db:
+        condition: service_healthy
+    networks:
+      - moodle-net
+
+volumes:
+  mariadb_data:
+  moodle_www:
+  moodle_data:
+
+networks:
+  moodle-net:
+    driver: bridge
